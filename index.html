@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wikipedia RAG Chat</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<!-- ── Sidebar ──────────────────────────────────────────────────── -->
+<div class="sidebar">
+  <div class="sidebar-header">
+    <div class="sidebar-logo">📚 Wikipedia RAG</div>
+    <button class="new-chat-btn" onclick="newChat()">
+      <svg width="13" height="13" viewBox="0 0 14 14" fill="none">
+        <path d="M7 1v12M1 7h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+      New Chat
+    </button>
+  </div>
+
+  <div class="chat-list" id="chatList">
+    <div class="no-chats">No chats yet</div>
+  </div>
+
+  <div class="sidebar-bottom">
+    <div class="field-label">Model</div>
+    <select class="model-select" id="modelSelect" onchange="onModelChange()">
+      <option value="">Loading…</option>
+    </select>
+
+    <div id="ctxSection" class="ctx-hidden">
+      <div class="field-label">Context window</div>
+      <div class="ctx-wrap">
+        <div class="ctx-bar-bg">
+          <div class="ctx-bar-fill" id="ctxFill" style="width:0%"></div>
+        </div>
+        <div class="ctx-text" id="ctxText">—</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Chat area ────────────────────────────────────────────────── -->
+<div class="chat-area">
+
+  <!-- Welcome screen (sibling of messages, not inside it) -->
+  <div class="welcome" id="welcome">
+    <div class="welcome-icon">💬</div>
+    <h2>Wikipedia RAG Chat</h2>
+    <p>
+      Start typing below or pick a chat from the sidebar.<br>
+      Use <code>/search your question</code> to query Wikipedia articles.<br>
+      Regular messages are answered by the model directly.
+    </p>
+  </div>
+
+  <!-- Messages area -->
+  <div class="messages-area" id="messagesArea" style="display:none"></div>
+
+  <!-- Input always visible -->
+  <div class="input-area">
+    <div class="ctx-full-banner" id="ctxFullBanner">
+      Context window full — please start a new chat to continue.
+    </div>
+    <div class="search-badge" id="searchBadge">🔍 SEARCH MODE</div>
+    <div class="input-row">
+      <div class="input-wrap">
+        <div class="cmd-popup" id="cmdPopup"></div>
+        <textarea
+          class="msg-input" id="msgInput"
+          placeholder="Message… (type /search to query Wikipedia)"
+          rows="1"
+          onkeydown="handleKey(event)"
+          oninput="onInput(this)"
+        ></textarea>
+      </div>
+      <button class="send-btn" id="sendBtn" onclick="sendMessage()">Send</button>
+    </div>
+    <div class="input-hint">Enter to send &nbsp;·&nbsp; Shift+Enter for new line</div>
+  </div>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

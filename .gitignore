@@ -1,0 +1,36 @@
+# ZIM files (large)
+*.zim
+
+# Built indexes (generated, not source)
+faiss.index
+*.pkl
+fts_index.db
+rag_chunks*.db
+
+# Runtime data
+chat_history.db
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+env/
+
+# Chunking pipeline (not part of the run server)
+chunker.py
+build_index.py
+db_writer.py
+zim_reader.py
+main.py
+1.py
+2.py
+4.py
+search.py
+
+# Misc
+pi/
+pi.zip
+*.zip
+.DS_Store
