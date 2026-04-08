@@ -431,3 +431,45 @@ body {
   font-size: 12px; color: var(--text-3);
 }
 .input-wrap { position: relative; flex: 1; }
+
+/* Article chip (pinned article in /article mode) */
+.article-chip-row {
+  display: flex; align-items: center;
+  margin-bottom: 7px;
+}
+.article-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: #EAF2F9; color: #2E6E96;
+  border: 1px solid #B0CEE5;
+  padding: 4px 6px 4px 10px; border-radius: 7px;
+  font-size: 12px; font-weight: 500;
+  max-width: 100%;
+}
+.article-chip-title {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  max-width: 460px;
+}
+.article-chip-clear {
+  background: none; border: none;
+  color: #2E6E96; cursor: pointer;
+  font-size: 13px; padding: 1px 4px;
+  line-height: 1; border-radius: 4px;
+  transition: background 0.1s;
+  flex-shrink: 0;
+}
+.article-chip-clear:hover { background: #B0CEE5; }
+
+/* Article badge on user messages */
+.article-tag {
+  background: #EAF2F9; color: #2E6E96;
+  border-color: #B0CEE5;
+}
+
+/* Input border when article mode is active */
+.msg-input.article-mode {
+  border-color: #86BBD8;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08), 0 0 0 3px rgba(46,110,150,0.13);
+}
+
+/* Title name in popup (no desc column needed) */
+.title-name { font-weight: 500; color: var(--text-1); font-size: 13px; }

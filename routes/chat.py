@@ -2,7 +2,7 @@ import re, json, time
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from filters import generic_relevance_filter
-from retrieval import embed_query, retrieve, RELEVANCE_THRESHOLD
+from retrieval import embed_query, retrieve, retrieve_for_article, RELEVANCE_THRESHOLD
 from llm import get_context_size, stream_generate, build_rag_prompt
 from database import db_get_chat, db_update_model, db_save_turn
 from schemas import SendMessage
@@ -35,17 +35,28 @@ def chat(req: SendMessage):
     # Load stored KV cache (may be None for the first turn)
     stored_context = json.loads(chat["context"]) if chat.get("context") else None
 
-    # Detect /search command
+    # Detect /search and /article commands
     message = req.message.strip()
-    is_rag  = message.lower().startswith("/search")
+    is_rag     = message.lower().startswith("/search")
+    is_article = message.lower().startswith("/article")
+    rag_query     = None
+    article_title = None
+    article_query = None
+
     if is_rag:
         rag_query = re.sub(r'^/search\s*', '', message, flags=re.IGNORECASE).strip()
         if not rag_query:
             is_rag = False
-        display_message = message
-    else:
-        rag_query       = None
-        display_message = message
+    elif is_article:
+        rest = re.sub(r'^/article\s*', '', message, flags=re.IGNORECASE)
+        if '|' in rest:
+            article_title, article_query = [p.strip() for p in rest.split('|', 1)]
+            if not article_title or not article_query:
+                is_article = False
+        else:
+            is_article = False
+
+    display_message = message
 
     # Build stats placeholders
     embed_ms = retrieve_ms = 0
@@ -54,7 +65,6 @@ def chat(req: SendMessage):
 
     # Build the prompt for this turn
     if is_rag and rag_query:
-        # Embed + retrieve
         t0 = time.time()
         qvec = embed_query(rag_query)
         embed_ms = round((time.time() - t0) * 1000)
@@ -66,13 +76,21 @@ def chat(req: SendMessage):
         chunks = generic_relevance_filter(rag_query, raw_chunks, RELEVANCE_THRESHOLD)
         if not chunks:
             is_fallback = True
+        prompt = build_rag_prompt(rag_query, chunks) if chunks else rag_query
 
-        if chunks:
-            # Inject Wikipedia context inline — gets baked into Ollama's KV cache
-            prompt = build_rag_prompt(rag_query, chunks)
-        else:
-            # Fallback: let model answer from its training data / existing KV cache
-            prompt = rag_query
+    elif is_article:
+        t0 = time.time()
+        qvec = embed_query(article_query)
+        embed_ms = round((time.time() - t0) * 1000)
+
+        t0 = time.time()
+        chunks = retrieve_for_article(qvec, article_title)
+        retrieve_ms = round((time.time() - t0) * 1000)
+
+        if not chunks:
+            is_fallback = True
+        prompt = build_rag_prompt(article_query, chunks) if chunks else article_query
+
     else:
         prompt = message
 
@@ -121,7 +139,7 @@ def chat(req: SendMessage):
         sources_payload = [
             {"title": t, "score": round(s, 4), "text": tx}
             for t, tx, s, *_ in chunks
-        ] if is_rag and not is_fallback else []
+        ] if (is_rag or is_article) and not is_fallback else []
 
         # Determine new title
         new_title = None
@@ -129,6 +147,8 @@ def chat(req: SendMessage):
             base = display_message
             if is_rag:
                 base = rag_query or display_message
+            elif is_article:
+                base = f"{article_title}: {article_query}"
             new_title = base[:48].strip()
             if len(base) > 48:
                 new_title += "…"
@@ -139,7 +159,7 @@ def chat(req: SendMessage):
         db_save_turn(
             req.chat_id,
             display_message,
-            is_rag,
+            is_rag or is_article,
             assistant_content,
             sources_payload,
             stats_payload,
@@ -153,7 +173,7 @@ def chat(req: SendMessage):
         stats_payload["sources"]   = sources_payload
         stats_payload["new_title"] = new_title
         stats_payload["chat_id"]   = req.chat_id
-        stats_payload["is_rag"]    = is_rag
+        stats_payload["is_rag"]    = is_rag or is_article
         yield f"\n\n[STATS]{json.dumps(stats_payload)}"
 
     return StreamingResponse(stream(), media_type="text/plain")

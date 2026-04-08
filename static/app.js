@@ -3,6 +3,7 @@ let currentChatId = null;
 let chats = [];
 let streaming = false;
 let serverSessionId = null;
+let selectedArticle = null;
 
 function showWelcome() {
   document.getElementById('welcome').style.display = '';
@@ -193,8 +194,8 @@ async function deleteChat(e, chatId) {
 // ── Send message ───────────────────────────────────────────────────────────
 async function sendMessage() {
   const input = document.getElementById('msgInput');
-  const message = input.value.trim();
-  if (!message || streaming) return;
+  const rawMessage = input.value.trim();
+  if (!rawMessage || streaming) return;
 
   if (!currentChatId) {
     try {
@@ -217,13 +218,26 @@ async function sendMessage() {
     }
   }
 
+  // If article mode: build full message from chip + query
+  let message = rawMessage;
+  if (selectedArticle) {
+    message = `/article ${selectedArticle} | ${rawMessage}`;
+  }
+
   const isRag = message.toLowerCase().startsWith('/search');
 
   appendUserMessage(message, isRag ? 1 : 0);
   input.value = '';
   input.style.height = '';
-  input.classList.remove('search-mode');
+  input.classList.remove('search-mode', 'article-mode');
   document.getElementById('searchBadge').classList.remove('on');
+
+  // Clear article chip
+  if (selectedArticle) {
+    selectedArticle = null;
+    document.getElementById('articleChipRow').style.display = 'none';
+    input.placeholder = 'Message… (type /search or /article to query Wikipedia)';
+  }
   document.getElementById('sendBtn').disabled = true;
   streaming = true;
   scrollBottom();
@@ -294,7 +308,9 @@ function appendUserMessage(content, isRag) {
   row.className = 'msg-row user';
 
   let inner = `<div class="msg-role">You</div>`;
-  if (isRag) {
+  if (content.toLowerCase().startsWith('/article')) {
+    inner += `<div class="search-tag article-tag">📄 ARTICLE</div>`;
+  } else if (isRag) {
     inner += `<div class="search-tag">🔍 SEARCH</div>`;
   }
   inner += `<div class="msg-bubble">${escHtml(content)}</div>`;
@@ -471,7 +487,7 @@ function setContextFull(isFull) {
     banner.classList.add('on');
   } else {
     input.disabled = false;
-    input.placeholder = 'Message… (type /search to query Wikipedia)';
+    input.placeholder = 'Message… (type /search or /article to query Wikipedia)';
     if (!streaming) btn.disabled = false;
     banner.classList.remove('on');
   }
@@ -490,7 +506,7 @@ function setSessionStale(isStale) {
     banner.textContent = 'Server was restarted — this session is no longer available. Please start a new chat.';
   } else {
     input.disabled = false;
-    input.placeholder = 'Message… (type /search to query Wikipedia)';
+    input.placeholder = 'Message… (type /search or /article to query Wikipedia)';
     if (!streaming) btn.disabled = false;
     banner.classList.remove('on');
     banner.textContent = 'Context window full — please start a new chat to continue.';
@@ -499,7 +515,8 @@ function setSessionStale(isStale) {
 
 // ── Slash-command autocomplete ─────────────────────────────────────────────
 const COMMANDS = [
-  { name: '/search', desc: 'Query Wikipedia articles via RAG' },
+  { name: '/search',  desc: 'Semantic search across all Wikipedia articles' },
+  { name: '/article', desc: 'Pin a specific article, then ask about it' },
 ];
 
 let cmdSelectedIdx = -1;
@@ -510,17 +527,39 @@ function onInput(el) {
 
   const val = el.value;
 
-  const isSearch = val.toLowerCase().startsWith('/search');
-  el.classList.toggle('search-mode', isSearch);
-  document.getElementById('searchBadge').classList.toggle('on', isSearch);
-
-  const slashMatch = /^(\/\S*)$/.test(val);
-  if (slashMatch) {
-    const typed = val.toLowerCase();
-    const matches = COMMANDS.filter(c => c.name.startsWith(typed));
-    renderCmdPopup(matches);
-  } else {
+  // Article selected — input is purely the query, no mode switching
+  if (selectedArticle) {
     closeCmdPopup();
+    closeTitlePopup();
+    return;
+  }
+
+  const isSearch  = val.toLowerCase().startsWith('/search');
+  const isArticle = val.toLowerCase().startsWith('/article');
+  el.classList.toggle('search-mode',  isSearch && !isArticle);
+  el.classList.toggle('article-mode', isArticle);
+  document.getElementById('searchBadge').classList.toggle('on', isSearch && !isArticle);
+
+  // Slash-command popup: only when the value is a bare /word with no space yet
+  if (/^(\/\S*)$/.test(val)) {
+    const typed = val.toLowerCase();
+    renderCmdPopup(COMMANDS.filter(c => c.name.startsWith(typed)));
+    closeTitlePopup();
+    return;
+  }
+
+  closeCmdPopup();
+
+  // Title autocomplete while user is typing the article name
+  if (isArticle) {
+    const term = val.replace(/^\/article\s*/i, '').trim();
+    if (term.length >= 1) {
+      debouncedFetchTitles(term);
+    } else {
+      closeTitlePopup();
+    }
+  } else {
+    closeTitlePopup();
   }
 }
 
@@ -562,6 +601,33 @@ function pickCmd(name) {
 }
 
 function handleKey(e) {
+  // Title popup takes priority
+  const titlePopup = document.getElementById('titlePopup');
+  if (titlePopup && titlePopup.classList.contains('open')) {
+    const items = titlePopup.querySelectorAll('.title-item');
+    if (items.length) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        titleSelectedIdx = Math.min(titleSelectedIdx + 1, items.length - 1);
+        items.forEach((el, i) => el.classList.toggle('selected', i === titleSelectedIdx));
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        titleSelectedIdx = Math.max(titleSelectedIdx - 1, 0);
+        items.forEach((el, i) => el.classList.toggle('selected', i === titleSelectedIdx));
+        return;
+      }
+      if (e.key === 'Tab' || (e.key === 'Enter' && titleSelectedIdx >= 0)) {
+        e.preventDefault();
+        const chosen = items[titleSelectedIdx >= 0 ? titleSelectedIdx : 0];
+        if (chosen) pickTitle(chosen.dataset.title);
+        return;
+      }
+      if (e.key === 'Escape') { closeTitlePopup(); return; }
+    }
+  }
+
   const popup = document.getElementById('cmdPopup');
   const isOpen = popup.classList.contains('open');
   const items  = popup.querySelectorAll('.cmd-item');
@@ -585,10 +651,7 @@ function handleKey(e) {
       if (chosen) pickCmd(chosen.dataset.cmd);
       return;
     }
-    if (e.key === 'Escape') {
-      closeCmdPopup();
-      return;
-    }
+    if (e.key === 'Escape') { closeCmdPopup(); return; }
   }
 
   if (e.key === 'Enter' && !e.shiftKey) {
@@ -608,3 +671,74 @@ function escHtml(str) {
 }
 
 function esc(str) { return escHtml(str); }
+
+// ── Article title autocomplete ─────────────────────────────────────────────
+let titleSelectedIdx = -1;
+let _titleDebounce   = null;
+
+function debouncedFetchTitles(q) {
+  clearTimeout(_titleDebounce);
+  _titleDebounce = setTimeout(() => fetchTitles(q), 160);
+}
+
+async function fetchTitles(q) {
+  try {
+    const data = await fetch(`/titles?q=${encodeURIComponent(q)}`).then(r => r.json());
+    renderTitlePopup(data.titles || []);
+  } catch(e) {
+    closeTitlePopup();
+  }
+}
+
+function renderTitlePopup(titles) {
+  const popup = document.getElementById('titlePopup');
+  titleSelectedIdx = -1;
+  if (!titles.length) { closeTitlePopup(); return; }
+  popup.innerHTML = titles.map((t, i) => `
+    <div class="cmd-item title-item" data-title="${esc(t)}"
+         onmousedown="pickTitle('${esc(t).replace(/'/g, '&#39;')}')"
+         onmouseover="hoverTitle(${i})">
+      <span class="cmd-name title-name">📄 ${esc(t)}</span>
+    </div>
+  `).join('');
+  popup.classList.add('open');
+}
+
+function closeTitlePopup() {
+  const popup = document.getElementById('titlePopup');
+  if (!popup) return;
+  popup.classList.remove('open');
+  popup.innerHTML = '';
+  titleSelectedIdx = -1;
+}
+
+function hoverTitle(idx) {
+  titleSelectedIdx = idx;
+  document.querySelectorAll('.title-item').forEach((el, i) =>
+    el.classList.toggle('selected', i === idx)
+  );
+}
+
+function pickTitle(title) {
+  selectedArticle = title;
+  const input = document.getElementById('msgInput');
+  input.value = '';
+  input.placeholder = `Ask about "${title}"…`;
+  input.classList.remove('article-mode');
+  input.classList.add('article-mode');
+  input.focus();
+  closeTitlePopup();
+  closeCmdPopup();
+  document.getElementById('articleChipTitle').textContent = title;
+  document.getElementById('articleChipRow').style.display = '';
+}
+
+function clearArticle() {
+  selectedArticle = null;
+  const input = document.getElementById('msgInput');
+  input.value = '';
+  input.placeholder = 'Message… (type /search or /article to query Wikipedia)';
+  input.classList.remove('article-mode');
+  document.getElementById('articleChipRow').style.display = 'none';
+  input.focus();
+}

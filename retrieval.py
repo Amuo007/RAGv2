@@ -37,6 +37,12 @@ titles = _cache["titles"]
 texts  = _cache["texts"]
 print(f"  {len(titles)} chunks")
 
+# Build article → chunk indices lookup for /article command
+_article_chunks: dict = {}
+for _i, _t in enumerate(titles):
+    _article_chunks.setdefault(_t, []).append(_i)
+print(f"  {len(_article_chunks)} unique articles indexed")
+
 
 # ── Core retrieval ────────────────────────────────────────────────────────────
 def embed_query(text: str) -> np.ndarray:
@@ -77,6 +83,23 @@ def _title_boost(query_words: set, title: str) -> float:
         return 0.0
     title_words = set(re.findall(r'\w+', title.lower()))
     return len(query_words & title_words) / len(query_words)
+
+
+def retrieve_for_article(qvec: np.ndarray, article_title: str, top_k: int = TOP_K):
+    """Similarity search restricted to chunks of a specific article."""
+    indices = _article_chunks.get(article_title, [])
+    if not indices:
+        return []
+    scored = []
+    for i in indices:
+        try:
+            vec = np.array(faiss_index.reconstruct(i), dtype=np.float32)
+            sim = float(np.dot(vec, qvec))
+        except Exception:
+            sim = 0.0
+        scored.append((i, sim))
+    scored.sort(key=lambda x: x[1], reverse=True)
+    return [(titles[i], texts[i], s, s) for i, s in scored[:top_k]]
 
 
 def retrieve(qvec: np.ndarray, query: str, top_k: int = TOP_K):

@@ -51,7 +51,8 @@
     <h2>Wikipedia RAG Chat</h2>
     <p>
       Start typing below or pick a chat from the sidebar.<br>
-      Use <code>/search your question</code> to query Wikipedia articles.<br>
+      Use <code>/search your question</code> to search across all articles.<br>
+      Use <code>/article</code> to pin a specific article and ask about it.<br>
       Regular messages are answered by the model directly.
     </p>
   </div>
@@ -65,12 +66,20 @@
       Context window full — please start a new chat to continue.
     </div>
     <div class="search-badge" id="searchBadge">🔍 SEARCH MODE</div>
+    <div class="article-chip-row" id="articleChipRow" style="display:none">
+      <div class="article-chip">
+        <span>📄</span>
+        <span class="article-chip-title" id="articleChipTitle"></span>
+        <button class="article-chip-clear" onmousedown="clearArticle()">✕</button>
+      </div>
+    </div>
     <div class="input-row">
       <div class="input-wrap">
+        <div class="cmd-popup" id="titlePopup"></div>
         <div class="cmd-popup" id="cmdPopup"></div>
         <textarea
           class="msg-input" id="msgInput"
-          placeholder="Message… (type /search to query Wikipedia)"
+          placeholder="Message… (type /search or /article to query Wikipedia)"
           rows="1"
           onkeydown="handleKey(event)"
           oninput="onInput(this)"

@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from fastapi.responses import HTMLResponse
 from llm import LLM_MODEL, OLLAMA_URL
 from state import SESSION_ID
+from retrieval import _article_chunks
 
 router = APIRouter()
 
@@ -27,3 +28,16 @@ def list_models():
 def get_session():
     """Returns the current server session ID. Used by the frontend to detect stale chats."""
     return {"session_id": SESSION_ID}
+
+
+@router.get("/titles")
+def search_titles(q: str = ""):
+    q = q.strip()
+    if len(q) < 1:
+        return {"titles": []}
+    ql = q.lower()
+    results = sorted(
+        (t for t in _article_chunks if ql in t.lower()),
+        key=lambda t: (not t.lower().startswith(ql), t.lower()),
+    )
+    return {"titles": results[:10]}
