@@ -62,7 +62,6 @@ async function onModelChange() {
       body: JSON.stringify({model})
     }).then(r => r.json());
 
-    // Update local chat record
     const chat = chats.find(c => c.id === currentChatId);
     if (chat) {
       chat.model = model;
@@ -118,7 +117,6 @@ async function openChat(chatId) {
   try {
     const data = await fetch(`/chats/${chatId}`).then(r => r.json());
 
-    // Sync local chat record
     const idx = chats.findIndex(c => c.id === chatId);
     if (idx >= 0) chats[idx] = {...chats[idx], ...data.chat};
 
@@ -137,7 +135,6 @@ async function openChat(chatId) {
     }
     scrollBottom();
 
-    // Disable input if this chat belongs to a previous server session
     const isStale = serverSessionId && data.chat.session_id && data.chat.session_id !== serverSessionId;
     setSessionStale(isStale);
     if (!isStale) document.getElementById('msgInput').focus();
@@ -199,7 +196,6 @@ async function sendMessage() {
   const message = input.value.trim();
   if (!message || streaming) return;
 
-  // Auto-create a chat if none is selected
   if (!currentChatId) {
     try {
       const model = getSelectedModel();
@@ -223,7 +219,6 @@ async function sendMessage() {
 
   const isRag = message.toLowerCase().startsWith('/search');
 
-  // Optimistically append user message
   appendUserMessage(message, isRag ? 1 : 0);
   input.value = '';
   input.style.height = '';
@@ -233,7 +228,6 @@ async function sendMessage() {
   streaming = true;
   scrollBottom();
 
-  // Append typing indicator + streaming bubble
   const typingId = appendTyping();
   const bubbleEl = appendAssistantBubble();
   scrollBottom();
@@ -301,7 +295,6 @@ function appendUserMessage(content, isRag) {
 
   let inner = `<div class="msg-role">You</div>`;
   if (isRag) {
-    const label = content.replace(/^\/search\s*/i, '').slice(0, 0);
     inner += `<div class="search-tag">🔍 SEARCH</div>`;
   }
   inner += `<div class="msg-bubble">${escHtml(content)}</div>`;
@@ -344,10 +337,22 @@ function finaliseAssistantMessage(bubbleEl, payload) {
     if (payload.gen_ms)        parts.push(`Gen <b>${payload.gen_ms}ms</b>`);
     if (payload.gen_tokens)    parts.push(`<b>${payload.gen_tokens}</b> tokens`);
     if (payload.total_ms)      parts.push(`Total <b>${payload.total_ms}ms</b>`);
+
+    // ── Debug: classifier result ──────────────────────────────────────────
+    if (payload.is_rag && payload.query_type) {
+      const typeLabel = payload.query_type === 'person'
+        ? `👤 person${payload.entity_name ? ` · <b>${escHtml(payload.entity_name)}</b>` : ''}`
+        : `🔍 generic`;
+      const fallbackLabel = payload.is_fallback
+        ? ` · <span class="debug-fallback">fallback</span>`
+        : '';
+      parts.push(`<span class="debug-classifier">${typeLabel}${fallbackLabel}</span>`);
+    }
+
     statsDiv.innerHTML = parts.map(p => `<span>${p}</span>`).join('');
     row.appendChild(statsDiv);
 
-    // Update context bar for current chat
+    // Update context bar
     if (currentChatId) {
       const chat = chats.find(c => c.id === currentChatId);
       if (chat) {
@@ -357,7 +362,7 @@ function finaliseAssistantMessage(bubbleEl, payload) {
     }
   }
 
-  // Update chat title in sidebar if changed
+  // Update chat title in sidebar
   if (payload.new_title && payload.chat_id) {
     const chat = chats.find(c => c.id === payload.chat_id);
     if (chat) {
@@ -366,7 +371,7 @@ function finaliseAssistantMessage(bubbleEl, payload) {
     }
   }
 
-  // Fallback note — shown when no ZIM articles were found, appended by us (not the LLM)
+  // Fallback note
   if (payload.is_fallback && payload.is_rag !== false) {
     const note = document.createElement('div');
     note.className = 'fallback-note';
@@ -500,18 +505,15 @@ const COMMANDS = [
 let cmdSelectedIdx = -1;
 
 function onInput(el) {
-  // Auto-resize
   el.style.height = 'auto';
   el.style.height = Math.min(el.scrollHeight, 180) + 'px';
 
   const val = el.value;
 
-  // Search-mode badge + input highlight
   const isSearch = val.toLowerCase().startsWith('/search');
   el.classList.toggle('search-mode', isSearch);
   document.getElementById('searchBadge').classList.toggle('on', isSearch);
 
-  // Slash-command popup: only when value starts with / and has no space yet
   const slashMatch = /^(\/\S*)$/.test(val);
   if (slashMatch) {
     const typed = val.toLowerCase();
@@ -553,10 +555,8 @@ function hoverCmd(idx) {
 
 function pickCmd(name) {
   const input = document.getElementById('msgInput');
-  // Insert command + trailing space so user can type their query right away
   input.value = name + ' ';
   input.focus();
-  // Trigger badge update
   onInput(input);
   closeCmdPopup();
 }

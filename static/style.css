@@ -165,7 +165,6 @@ body {
 .messages-area::-webkit-scrollbar-track { background: transparent; }
 .messages-area::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 
-/* Constrain messages to a readable max-width, centered */
 .msg-row {
   width: 100%; max-width: 760px;
   margin: 0 auto 24px;
@@ -257,6 +256,24 @@ body {
   margin-top: 8px; font-size: 11px; color: var(--text-3);
 }
 .msg-stats span b { color: var(--text-2); font-weight: 500; }
+
+/* ── Debug classifier label ──────────────────────────────────────────── */
+.debug-classifier {
+  font-style: italic;
+  color: var(--text-3);
+  border-left: 2px solid var(--border);
+  padding-left: 8px;
+  margin-left: 2px;
+}
+.debug-classifier b {
+  color: var(--text-2);
+  font-style: normal;
+}
+.debug-fallback {
+  color: #C05C5C;
+  font-weight: 600;
+  font-style: normal;
+}
 
 /* Sources */
 .sources-toggle {

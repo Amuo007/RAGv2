@@ -1,8 +1,7 @@
 import re, json, time
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
-from classifier import classify_query
-from filters import generic_relevance_filter, rule_based_title_filter
+from filters import generic_relevance_filter
 from retrieval import embed_query, retrieve, RELEVANCE_THRESHOLD
 from llm import get_context_size, stream_generate, build_rag_prompt
 from database import db_get_chat, db_update_model, db_save_turn
@@ -49,9 +48,7 @@ def chat(req: SendMessage):
         display_message = message
 
     # Build stats placeholders
-    embed_ms = classify_ms = retrieve_ms = 0
-    query_type = "chat"
-    entity_name = ""
+    embed_ms = retrieve_ms = 0
     chunks = []
     is_fallback = False
 
@@ -63,23 +60,12 @@ def chat(req: SendMessage):
         embed_ms = round((time.time() - t0) * 1000)
 
         t0 = time.time()
-        query_type, entity_name = classify_query(rag_query)
-        classify_ms = round((time.time() - t0) * 1000)
-
-        t0 = time.time()
         raw_chunks = retrieve(qvec, rag_query)
         retrieve_ms = round((time.time() - t0) * 1000)
 
-        if query_type == "generic":
-            chunks = generic_relevance_filter(rag_query, raw_chunks, RELEVANCE_THRESHOLD)
-            if not chunks:
-                is_fallback = True
-        else:
-            filtered = rule_based_title_filter(rag_query, raw_chunks)
-            if filtered:
-                chunks = filtered
-            else:
-                is_fallback = True
+        chunks = generic_relevance_filter(rag_query, raw_chunks, RELEVANCE_THRESHOLD)
+        if not chunks:
+            is_fallback = True
 
         if chunks:
             # Inject Wikipedia context inline — gets baked into Ollama's KV cache
@@ -123,7 +109,6 @@ def chat(req: SendMessage):
         # Build payloads
         stats_payload = {
             "embed_ms":      embed_ms,
-            "classify_ms":   classify_ms,
             "retrieve_ms":   retrieve_ms,
             "prompt_tokens": prompt_tokens,
             "ttft_ms":       t_first_token_ms or 0,
@@ -132,8 +117,6 @@ def chat(req: SendMessage):
             "total_ms":      total_ms,
             "context_size":  chat["context_size"],
             "is_fallback":   is_fallback,
-            "query_type":    query_type,
-            "entity_name":   entity_name,
         }
         sources_payload = [
             {"title": t, "score": round(s, 4), "text": tx}
