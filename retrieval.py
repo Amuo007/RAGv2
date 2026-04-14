@@ -117,7 +117,7 @@ def retrieve_for_article(qvec: np.ndarray, article_title: str, top_k: int = TOP_
     scored.sort(key=lambda x: x[1], reverse=True)
     top_ids = [i for i, _ in scored[:top_k]]
     chunks = _fetch_chunks(top_ids)
-    return [(chunks[i][0], chunks[i][1], s, s) for i, s in scored[:top_k] if i in chunks]
+    return [(chunks[i][0], chunks[i][1], s, s, i) for i, s in scored[:top_k] if i in chunks]
 
 
 # Answer-pattern phrases that indicate definitional / classification content
@@ -171,4 +171,4 @@ def retrieve(qvec: np.ndarray, query: str, top_k: int = TOP_K):
     ranked = sorted(final.items(), key=lambda x: x[1], reverse=True)
     top_ids = [i for i, _ in ranked[:top_k]]
     chunks = _fetch_chunks(top_ids)
-    return [(chunks[i][0], chunks[i][1], rrf_scores[i], cosine_scores.get(i)) for i in top_ids if i in chunks]
+    return [(chunks[i][0], chunks[i][1], rrf_scores[i], cosine_scores.get(i), i) for i in top_ids if i in chunks]

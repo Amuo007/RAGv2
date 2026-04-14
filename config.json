@@ -17,5 +17,7 @@
   "chunk_max_chars":        800,
   "chunk_overlap_paragraphs": 1,
 
-  "relevance_threshold":      0.01
+  "relevance_threshold":      0.01,
+
+  "test": true
 }

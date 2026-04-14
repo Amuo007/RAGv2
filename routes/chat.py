@@ -2,11 +2,14 @@ import re, json, time
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from filters import generic_relevance_filter
-from retrieval import embed_query, retrieve, retrieve_for_article, RELEVANCE_THRESHOLD
+from retrieval import embed_query, retrieve, retrieve_for_article, RELEVANCE_THRESHOLD, TOP_K
 from llm import get_context_size, stream_generate, build_rag_prompt
 from database import db_get_chat, db_update_model, db_save_turn
 from schemas import SendMessage
 from state import SESSION_ID
+
+with open("config.json") as _f:
+    _TEST_MODE = json.load(_f).get("test", False)
 
 router = APIRouter()
 
@@ -137,8 +140,9 @@ def chat(req: SendMessage):
             "is_fallback":   is_fallback,
         }
         sources_payload = [
-            {"title": t, "score": round(s, 4), "text": tx}
-            for t, tx, s, *_ in chunks
+            {"title": t, "score": round(s, 4), "text": tx,
+             **( {"db_id": db_id} if _TEST_MODE else {} )}
+            for t, tx, s, _, db_id in chunks
         ] if (is_rag or is_article) and not is_fallback else []
 
         # Determine new title
