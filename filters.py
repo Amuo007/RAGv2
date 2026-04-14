@@ -10,5 +10,5 @@ def generic_relevance_filter(query: str, chunks: list, threshold: float) -> list
         tw = set(re.findall(r'\w+', title.lower())) - _STOPWORDS
         if not query_words or not tw:
             return False
-        return len(query_words & tw) / len(query_words) >= 0.5
+        return len(query_words & tw) / len(tw) >= 0.5
     return [c for c in chunks if c[2] >= threshold or _title_match(c[0])]

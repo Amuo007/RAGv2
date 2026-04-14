@@ -30,6 +30,13 @@
       <option value="">Loading…</option>
     </select>
 
+    <div class="field-label">Chunks</div>
+    <div class="chunks-control">
+      <button class="chunk-btn active" onclick="setChunks(3, this)">Low · 3</button>
+      <button class="chunk-btn"        onclick="setChunks(6, this)">Mid · 6</button>
+      <button class="chunk-btn"        onclick="setChunks(9, this)">High · 9</button>
+    </div>
+
     <div id="ctxSection" class="ctx-hidden">
       <div class="field-label">Context window</div>
       <div class="ctx-wrap">

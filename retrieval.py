@@ -1,6 +1,5 @@
 import re
 import json
-import pickle
 import sqlite3
 import requests
 import numpy as np
@@ -19,7 +18,7 @@ FAISS_K             = _cfg["faiss_k"]
 BM25_K              = _cfg["bm25_k"]
 RRF_K               = _cfg["rrf_k"]
 FAISS_FILE          = _cfg["faiss_file"]
-CACHE_FILE          = _cfg["cache_file"]
+LOOKUP_DB_FILE      = _cfg["cache_file"]   # SQLite lookup DB built by build_index.py
 FTS_DB_FILE         = _cfg["fts_db_file"]
 RELEVANCE_THRESHOLD = _cfg.get("relevance_threshold", 0.03)
 
@@ -28,20 +27,37 @@ print("Loading FAISS index...")
 faiss_index = faiss.read_index(FAISS_FILE)
 if hasattr(faiss_index, 'nprobe'):
     faiss_index.nprobe = 64
+if isinstance(faiss_index, faiss.IndexIVF):
+    faiss_index.make_direct_map()
 print(f"  {faiss_index.ntotal} vectors")
 
-print("Loading chunks cache...")
-with open(CACHE_FILE, "rb") as f:
-    _cache = pickle.load(f)
-titles = _cache["titles"]
-texts  = _cache["texts"]
-print(f"  {len(titles)} chunks")
+# Load only titles at startup (tiny compared to texts) so _article_chunks and
+# title-boost scoring work without keeping all chunk text in RAM.
+print("Loading titles from lookup DB...")
+_lookup_conn = sqlite3.connect(LOOKUP_DB_FILE, check_same_thread=False)
+_titles_map: dict[int, str] = {
+    row[0]: row[1]
+    for row in _lookup_conn.execute("SELECT id, title FROM chunks_lookup").fetchall()
+}
+print(f"  {len(_titles_map)} chunks")
 
 # Build article → chunk indices lookup for /article command
 _article_chunks: dict = {}
-for _i, _t in enumerate(titles):
+for _i, _t in _titles_map.items():
     _article_chunks.setdefault(_t, []).append(_i)
 print(f"  {len(_article_chunks)} unique articles indexed")
+
+
+def _fetch_chunks(indices: list[int]) -> dict[int, tuple[str, str]]:
+    """Return {id: (title, chunk_text)} for the given FAISS indices."""
+    if not indices:
+        return {}
+    placeholders = ",".join("?" * len(indices))
+    rows = _lookup_conn.execute(
+        f"SELECT id, title, chunk_text FROM chunks_lookup WHERE id IN ({placeholders})",
+        indices,
+    ).fetchall()
+    return {row[0]: (row[1], row[2]) for row in rows}
 
 
 # ── Core retrieval ────────────────────────────────────────────────────────────
@@ -59,7 +75,7 @@ def _bm25_search(query: str, top_k: int):
     words = re.findall(r'\w+', query)
     if not words:
         return []
-    match_expr = " ".join(
+    match_expr = " OR ".join(
         f'"{w}"' for w in words
         if len(w) >= 2 and w.lower() not in _STOPWORDS
     )
@@ -99,7 +115,20 @@ def retrieve_for_article(qvec: np.ndarray, article_title: str, top_k: int = TOP_
             sim = 0.0
         scored.append((i, sim))
     scored.sort(key=lambda x: x[1], reverse=True)
-    return [(titles[i], texts[i], s, s) for i, s in scored[:top_k]]
+    top_ids = [i for i, _ in scored[:top_k]]
+    chunks = _fetch_chunks(top_ids)
+    return [(chunks[i][0], chunks[i][1], s, s) for i, s in scored[:top_k] if i in chunks]
+
+
+# Answer-pattern phrases that indicate definitional / classification content
+_ANSWER_PATTERNS = re.compile(
+    r'\b(is a|is an|stimulant|depressant|hallucinogen|psychedelic|narcotic|analgesic'
+    r'|drug|compound|substance|chemical|medication|pharmaceutical|receptor|agonist|antagonist)\b',
+    re.IGNORECASE,
+)
+
+# BM25 weight multiplier — makes BM25 rank contributions twice as heavy as FAISS
+_BM25_WEIGHT = 2.0
 
 
 def retrieve(qvec: np.ndarray, query: str, top_k: int = TOP_K):
@@ -121,14 +150,25 @@ def retrieve(qvec: np.ndarray, query: str, top_k: int = TOP_K):
         if idx in vec_ranks:
             score += 1.0 / (RRF_K + vec_ranks[idx])
         if idx in bm25_ranks:
-            score += 1.0 / (RRF_K + bm25_ranks[idx])
+            score += _BM25_WEIGHT / (RRF_K + bm25_ranks[idx])
         rrf_scores[idx] = score
 
     q_words = set(re.findall(r'\w+', norm_query.lower())) - _STOPWORDS
-    final = {
-        idx: score + _title_boost(q_words, titles[idx]) * 0.15
-        for idx, score in rrf_scores.items()
-    }
+    top_ids_pre = [i for i, _ in sorted(rrf_scores.items(), key=lambda x: x[1], reverse=True)[:top_k * 2]]
+    chunks_pre = _fetch_chunks(top_ids_pre)
+
+    # Fix 2: boost chunks that contain answer-pattern phrases (definitional content)
+    final = {}
+    for idx, score in rrf_scores.items():
+        if idx not in chunks_pre:
+            continue
+        boost = _title_boost(q_words, _titles_map.get(idx, "")) * 0.15
+        chunk_text = chunks_pre[idx][1]
+        if _ANSWER_PATTERNS.search(chunk_text):
+            boost += 0.10
+        final[idx] = score + boost
 
     ranked = sorted(final.items(), key=lambda x: x[1], reverse=True)
-    return [(titles[i], texts[i], rrf_scores[i], cosine_scores.get(i)) for i, _ in ranked[:top_k]]
+    top_ids = [i for i, _ in ranked[:top_k]]
+    chunks = _fetch_chunks(top_ids)
+    return [(chunks[i][0], chunks[i][1], rrf_scores[i], cosine_scores.get(i)) for i in top_ids if i in chunks]

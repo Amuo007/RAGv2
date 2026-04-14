@@ -62,11 +62,18 @@ def build_context_content(chunks: list) -> str:
     return "\n\n---\n\n".join(f"[{title}]\n{text}" for title, text, *_ in chunks)
 
 
-def build_rag_prompt(rag_query: str, chunks: list) -> str:
+_TONE = {
+    3: "concisely",
+    6: "in detail",
+    9: "comprehensively",
+}
+
+def build_rag_prompt(rag_query: str, chunks: list, top_k: int = 3) -> str:
     """Build a self-contained prompt that injects Wikipedia context inline."""
-    ctx = build_context_content(chunks)
+    ctx  = build_context_content(chunks)
+    tone = _TONE.get(top_k, "concisely")
     return (
-        f"Using the following Wikipedia context, answer the question concisely.\n"
+        f"Using the following Wikipedia context, answer the question {tone}.\n"
         f"Do not add information not present in the context.\n\n"
         f"CONTEXT:\n{ctx}\n\n"
         f"QUESTION: {rag_query}"

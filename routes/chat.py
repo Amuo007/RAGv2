@@ -70,13 +70,13 @@ def chat(req: SendMessage):
         embed_ms = round((time.time() - t0) * 1000)
 
         t0 = time.time()
-        raw_chunks = retrieve(qvec, rag_query)
+        raw_chunks = retrieve(qvec, rag_query, top_k=req.top_k or TOP_K)
         retrieve_ms = round((time.time() - t0) * 1000)
 
         chunks = generic_relevance_filter(rag_query, raw_chunks, RELEVANCE_THRESHOLD)
         if not chunks:
             is_fallback = True
-        prompt = build_rag_prompt(rag_query, chunks) if chunks else rag_query
+        prompt = build_rag_prompt(rag_query, chunks, top_k=req.top_k or TOP_K) if chunks else rag_query
 
     elif is_article:
         t0 = time.time()
@@ -84,12 +84,12 @@ def chat(req: SendMessage):
         embed_ms = round((time.time() - t0) * 1000)
 
         t0 = time.time()
-        chunks = retrieve_for_article(qvec, article_title)
+        chunks = retrieve_for_article(qvec, article_title, top_k=req.top_k or TOP_K)
         retrieve_ms = round((time.time() - t0) * 1000)
 
         if not chunks:
             is_fallback = True
-        prompt = build_rag_prompt(article_query, chunks) if chunks else article_query
+        prompt = build_rag_prompt(article_query, chunks, top_k=req.top_k or TOP_K) if chunks else article_query
 
     else:
         prompt = message

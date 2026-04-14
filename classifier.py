@@ -1,7 +1,7 @@
 import re
 
 _STOPWORDS = {
-    'the','a','an','is','was','were','did','do','does','when','where',
+    'the','a','an','is','are','was','were','did','do','does','when','where',
     'who','what','how','why','which','in','on','at','to','for','of',
     'and','or','but','it','he','she','they','we','you','his','her',
     'their','its','be','been','have','has','had','this','that','these',

@@ -11,3 +11,4 @@ class SendMessage(BaseModel):
     chat_id: str
     message: str
     model: Optional[str] = None
+    top_k: Optional[int] = None

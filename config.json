@@ -1,12 +1,12 @@
 {
   "ollama_url":             "http://localhost:11434",
-  "embed_model":            "nomic-embed-text",
+  "embed_model":            "embeddinggemma",
   "llm_model":              "gemma3:1b",
 
   "zim_file":               "wikipedia_en_100_2026-01.zim",
   "db_file":                "rag_chunks.db",
   "faiss_file":             "faiss.index",
-  "cache_file":             "chunks_cache.pkl",
+  "cache_file":             "chunks_lookup.db",
   "fts_db_file":            "fts_index.db",
 
   "top_k":                  3,
@@ -15,5 +15,7 @@
   "rrf_k":                  60,
 
   "chunk_max_chars":        800,
-  "chunk_overlap_paragraphs": 1
+  "chunk_overlap_paragraphs": 1,
+
+  "relevance_threshold":      0.01
 }

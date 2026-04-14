@@ -4,6 +4,13 @@ let chats = [];
 let streaming = false;
 let serverSessionId = null;
 let selectedArticle = null;
+let currentTopK = 3;
+
+function setChunks(n, btn) {
+  currentTopK = n;
+  document.querySelectorAll('.chunk-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+}
 
 function showWelcome() {
   document.getElementById('welcome').style.display = '';
@@ -254,7 +261,7 @@ async function sendMessage() {
     const res = await fetch('/chat', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({chat_id: currentChatId, message, model})
+      body: JSON.stringify({chat_id: currentChatId, message, model, top_k: currentTopK})
     });
 
     if (res.status === 409) {
@@ -279,7 +286,7 @@ async function sendMessage() {
       const sentIdx = buffer.indexOf('\n\n[STATS]');
       if (sentIdx !== -1) {
         full = buffer.slice(0, sentIdx).replace(/\n+$/, '').trim();
-        bubbleEl.textContent = full;
+        bubbleEl.innerHTML = parseMarkdown(full);
         try {
           const payload = JSON.parse(buffer.slice(sentIdx + '\n\n[STATS]'.length));
           finaliseAssistantMessage(bubbleEl, payload);
@@ -287,7 +294,7 @@ async function sendMessage() {
         break;
       }
       full = buffer;
-      bubbleEl.textContent = buffer;
+      bubbleEl.innerHTML = parseMarkdown(buffer);
       scrollBottom();
     }
   } catch(err) {
@@ -329,7 +336,7 @@ function appendAssistantBubble() {
 
 function appendAssistantMessage(content, sources, stats) {
   const bubble = appendAssistantBubble();
-  bubble.textContent = content;
+  bubble.innerHTML = parseMarkdown(content);
   if (stats || (sources && sources.length)) {
     finaliseAssistantMessage(bubble, {...(stats||{}), sources: sources||[]});
   }
@@ -671,6 +678,47 @@ function escHtml(str) {
 }
 
 function esc(str) { return escHtml(str); }
+
+// ── Markdown renderer (assistant messages only) ────────────────────────────
+function inlineMd(text) {
+  text = text.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
+  text = text.replace(/\*\*(.+?)\*\*/g,     '<strong>$1</strong>');
+  text = text.replace(/\*([^*\n]+?)\*/g,    '<em>$1</em>');
+  text = text.replace(/`([^`]+)`/g,         '<code>$1</code>');
+  return text;
+}
+
+function parseMarkdown(raw) {
+  if (!raw) return '';
+  const lines = raw.split('\n');
+  let html = '';
+  let inList = false;
+
+  for (const line of lines) {
+    const listMatch = line.match(/^[\*\-] (.+)/);
+    const ordMatch  = line.match(/^\d+\. (.+)/);
+
+    if (listMatch || ordMatch) {
+      if (!inList) { html += '<ul>'; inList = true; }
+      html += `<li>${inlineMd(escHtml(listMatch ? listMatch[1] : ordMatch[1]))}</li>`;
+      continue;
+    }
+    if (inList) { html += '</ul>'; inList = false; }
+
+    const h3 = line.match(/^### (.+)/);
+    const h2 = line.match(/^## (.+)/);
+    const h1 = line.match(/^# (.+)/);
+
+    if      (h3)            html += `<strong>${escHtml(h3[1])}</strong><br>`;
+    else if (h2)            html += `<strong>${escHtml(h2[1])}</strong><br>`;
+    else if (h1)            html += `<strong>${escHtml(h1[1])}</strong><br>`;
+    else if (line.trim() === '') html += '<br>';
+    else                    html += inlineMd(escHtml(line)) + '<br>';
+  }
+
+  if (inList) html += '</ul>';
+  return html.replace(/<br>$/, '');
+}
 
 // ── Article title autocomplete ─────────────────────────────────────────────
 let titleSelectedIdx = -1;
